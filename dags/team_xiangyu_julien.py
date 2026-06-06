@@ -21,18 +21,18 @@ from airflow.decorators import task
 from airflow.sensors.filesystem import FileSensor
 
 from include.ingest import ingest_day, validate_silver
-from lab4_student.include.team_xiangyu_julien_spark import run_daily
+from include.team_xiangyu_julien_spark import run_daily
 
 
 DEFAULT_ARGS = {
-    "owner": "team_yan",
+    "owner": "team_xiangyu_julien",
     "retries": 2,
     "retry_delay": timedelta(minutes=3),
 }
 
 
 with DAG(
-    dag_id="team_yan",
+    dag_id="team_xiangyu_julien",
     description="Retail KPI pipeline",
     start_date=datetime(2026, 6, 1),
     end_date=datetime(2026, 6, 14),
