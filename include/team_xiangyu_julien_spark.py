@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.functions import col, upper, when, sum, count
 from pathlib import Path
 import json
+
+from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql.functions import col, upper, when, sum, count
 
 
 def transform_1(spark: SparkSession, logical_date: str) -> DataFrame:
@@ -26,7 +27,8 @@ def transform_2(spark: SparkSession, df: DataFrame, logical_date: str) -> DataFr
 
     df = df.withColumn(
         "amount_bucket",
-        when(col("amount_eur") > 100, "high")
+        when(col("amount_eur") >= 100, "high")
+        .when(col("amount_eur") >= 50, "medium")
         .otherwise("low")
     )
 
@@ -50,12 +52,12 @@ def transform_3(df: DataFrame) -> DataFrame:
 
 
 def run_daily(logical_date: str,
-              with_reference: bool = False):
+              with_reference: bool = False) -> dict:
 
     spark = (
         SparkSession.builder
         .master("local[*]")
-        .appName("team_yan")
+        .appName("team_xiangyu_julien")
         .getOrCreate()
     )
 
@@ -80,15 +82,25 @@ def run_daily(logical_date: str,
         "overwrite"
     ).parquet(curated_path)
 
-    revenue = final_df.agg(
+    total_revenue = final_df.agg(
         sum("revenue")
     ).collect()[0][0]
 
+    total_transactions = final_df.agg(
+        sum("transaction_count")
+    ).collect()[0][0]
+
+    total_kpi_rows = final_df.count()
+
     report = {
 
+        "status": "success",
         "logical_date": logical_date,
-        "total_revenue": float(revenue),
-        "curated_path": curated_path
+        "total_revenue": float(total_revenue),
+        "total_transactions": int(total_transactions),
+        "total_kpi_rows": int(total_kpi_rows),
+        "curated_path": curated_path,
+        "idempotence": "outputs are overwritten for the same logical date"
 
     }
 
@@ -97,7 +109,8 @@ def run_daily(logical_date: str,
     )
 
     report_path.write_text(
-        json.dumps(report, indent=2)
+        json.dumps(report, indent=2),
+        encoding="utf-8"
     )
 
     spark.stop()

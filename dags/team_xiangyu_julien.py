@@ -46,8 +46,9 @@ with DAG(
         task_id="wait_csv",
         filepath="/opt/airflow/data/incoming/transactions_{{ ds }}.csv",
         poke_interval=10,
-        timeout=300,
+        timeout=600,
         mode="reschedule",
+        soft_fail=False,
     )
 
     @task
@@ -57,6 +58,20 @@ with DAG(
     @task
     def validate_task(ds=None):
         validate_silver(ds)
+
+    @task
+    def validate_business_rules(ds=None):
+        import duckdb
+
+        path = f"/opt/airflow/data/raw/dt={ds}"
+
+        row_count = duckdb.sql(
+        f"SELECT COUNT(*) FROM read_parquet('{path}/*.parquet')"
+        ).fetchone()[0]
+
+        if row_count == 0:
+            raise ValueError(f"No rows found for {ds}")
+        print(f"Business validation passed for {ds}: rows={row_count}")
 
     @task
     def spark_task(ds=None):
@@ -70,6 +85,6 @@ with DAG(
     def notify_task(ds=None):
         print(f"Pipeline completed successfully for {ds}")
 
-    wait_csv >> ingest_task() >> validate_task() >> spark_task() >> report_task() >> notify_task()
+    wait_csv >> ingest_task() >> validate_task() >> validate_business_rules() >> spark_task() >> report_task() >> notify_task()
 
 
