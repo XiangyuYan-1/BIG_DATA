@@ -23,6 +23,7 @@ from airflow.sensors.filesystem import FileSensor
 from include.ingest import ingest_day, validate_silver
 from include.team_xiangyu_julien_spark import run_daily
 
+from airflow.utils.task_group import TaskGroup
 
 DEFAULT_ARGS = {
     "owner": "team_xiangyu_julien",
@@ -85,6 +86,18 @@ with DAG(
     def notify_task(ds=None):
         print(f"Pipeline completed successfully for {ds}")
 
-    wait_csv >> ingest_task() >> validate_task() >> validate_business_rules() >> spark_task() >> report_task() >> notify_task()
+    ingest = ingest_task()
+
+    with TaskGroup("quality_checks") as quality_checks:
+        validate = validate_task()
+        business_rules = validate_business_rules()
+
+        validate >> business_rules
+
+    spark = spark_task()
+    report = report_task()
+    notify = notify_task()
+
+    wait_csv >> ingest >> quality_checks >> spark >> report >> notify
 
 
