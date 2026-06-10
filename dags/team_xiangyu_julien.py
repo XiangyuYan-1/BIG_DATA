@@ -19,11 +19,11 @@ from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.decorators import task
 from airflow.sensors.filesystem import FileSensor
+from airflow.utils.task_group import TaskGroup
 
 from include.ingest import ingest_day, validate_silver
 from include.team_xiangyu_julien_spark import run_daily
 
-from airflow.utils.task_group import TaskGroup
 
 DEFAULT_ARGS = {
     "owner": "team_xiangyu_julien",
@@ -56,23 +56,36 @@ with DAG(
     def ingest_task(ds=None):
         ingest_day(ds)
 
-    @task
+    @task(retries=0)
     def validate_task(ds=None):
         validate_silver(ds)
 
-    @task
+    @task(retries=0)
     def validate_business_rules(ds=None):
         import duckdb
 
         path = f"/opt/airflow/data/raw/dt={ds}"
 
         row_count = duckdb.sql(
-        f"SELECT COUNT(*) FROM read_parquet('{path}/*.parquet')"
+            f"SELECT COUNT(*) FROM read_parquet('{path}/*.parquet')"
+        ).fetchone()[0]
+
+        total_revenue = duckdb.sql(
+            f"SELECT SUM(amount_eur) FROM read_parquet('{path}/*.parquet')"
         ).fetchone()[0]
 
         if row_count == 0:
             raise ValueError(f"No rows found for {ds}")
-        print(f"Business validation passed for {ds}: rows={row_count}")
+
+        if total_revenue is None or total_revenue <= 0:
+            raise ValueError(
+                f"Corrupt data detected for {ds}: total_revenue={total_revenue}"
+            )
+
+        print(
+            f"Business validation passed for {ds}: "
+            f"rows={row_count}, total_revenue={total_revenue}"
+        )
 
     @task
     def spark_task(ds=None):
